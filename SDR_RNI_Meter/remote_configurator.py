@@ -23,13 +23,16 @@ class remote_configurator():
 
         self.set_socket()
         self.s.bind((self.host, self.port))
-        self.s.listen(1)
 
-    def listen(self):
+    def listen(self, resp):
         """Listen to incoming configurations"""
-
+        self.s.listen(1)
         conn, addr = self.s.accept()
         data = loads(conn.recv(self.buffer_size))
+        if not isinstance(resp, dict):
+            raise TypeError('conf must be a dict')
+        resp = dumps(resp)
+        conn.send(resp)
         conn.close()
 
         return data
@@ -43,5 +46,9 @@ class remote_configurator():
             raise TypeError('conf must be a dict')
         conf = dumps(conf)
         self.s.connect((self.host, self.port))
-        self.s.send(conf)
+        self.s.send(conf) 
+        rec = loads(self.s.recv(self.buffer_size)) 
         self.s.close()
+        
+        return rec 
+        
