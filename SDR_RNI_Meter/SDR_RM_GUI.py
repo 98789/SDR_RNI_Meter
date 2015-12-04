@@ -27,6 +27,7 @@ from gnuradio import gr
 from gnuradio import uhd
 from optparse import OptionParser
 from remote_configurator import remote_configurator
+import argparse
 import itertools
 import sip
 import RadioGIS
@@ -53,13 +54,32 @@ class dialog_box(QtGui.QWidget):
 	self.showMaximized()
 
         self.vertlayout = QtGui.QVBoxLayout(self)
+
+        self.menu_bar = QtGui.QMenuBar()
+        self.file_menu = self.menu_bar.addMenu('Archivo')
+
+        self.save_action = QtGui.QAction(QtGui.QIcon('images/save.png'), 'Guardar', self)
+        self.save_action.setShortcut('Ctrl+S')
+        self.save_action.setStatusTip('Guardar datos')
+        self.save_action.triggered.connect(control.save_what)
+        self.file_menu.addAction(self.save_action)
+
+        self.exit_action = QtGui.QAction('Salir', self)
+        self.exit_action.triggered.connect(exit)
+        self.file_menu.addAction(self.exit_action)
+
+        self.vertlayout.addWidget(self.menu_bar)
         self.vertlayout.addWidget(header)
         self.body = QtGui.QWidget()
+
         self.boxlayout = QtGui.QHBoxLayout()
         self.boxlayout.addWidget(control, 1)
         self.boxlayout.addWidget(display)
+
         self.body.setLayout(self.boxlayout)
         self.vertlayout.addWidget(self.body)
+
+
 
 
 class header(QtGui.QWidget):
@@ -121,6 +141,7 @@ class control_box(QtGui.QWidget):
 
         self.sel_sc = QtGui.QLineEdit(self)
         self.sel_sc.setMinimumWidth(100)
+        self.sel_sc.setEnabled(False)
         self.conf_an.addRow("N. Barridos:", self.sel_sc)
         self.connect(self.sel_sc, QtCore.SIGNAL("editingFinished()"),
                      self.sc_edit_text)
@@ -255,38 +276,38 @@ class control_box(QtGui.QWidget):
 
     def ab_edit_text(self):
         try:
-	    newab = float(self.sel_ab.currentText())
+	    newab = int(self.sel_ab.currentText())
             self.signal.set_ab(newab)
         except ValueError:
 	    print("Unsupported ab value")
 
     def fi_edit_text(self):
         try:
-	    newfi = float(self.sel_fi.text())
+	    newfi = int(self.sel_fi.text())
             self.signal.set_fi(newfi)
         except ValueError:
-	    print("Invalid center frequency")
+	    print("Invalid start frequency")
         self.sel_fi.setText("{0:.0f}".format(self.signal.get_fi()))
 
     def sc_edit_text(self):
         try:
-	    newsc = float(self.sel_sc.text())
+	    newsc = int(self.sel_sc.text())
             self.signal.set_sc(newsc)
         except ValueError:
-	    print("Invalid center frequency")
+	    print("Invalid number of sc")
         self.sel_sc.setText("{0:.0f}".format(self.signal.get_sc()))
 
     def t_edit_text(self):
         try:
-	    newt = float(self.sel_t.text())
+	    newt = int(self.sel_t.text())
             self.signal.set_t(newt)
         except ValueError:
-	    print("Invalid center frequency")
-        self.sel_sc.setText("{0:.0f}".format(self.signal.get_t()))
+	    print("Invalid time of sc")
+        self.sel_t.setText("{0:.0f}".format(self.signal.get_t()))
 
     def ganancia_edit_text(self):
         try:
-	    newGanancia = float(self.sel_ganancia.text())
+	    newGanancia = int(self.sel_ganancia.text())
             self.signal.set_gan(newGanancia)
         except ValueError:
 	    print("Gain out of range")
@@ -319,9 +340,15 @@ class control_box(QtGui.QWidget):
         except ValueError:
 	    print("Invalid center frequency")
 
+    def save_what(self):
+            self.file_name = QtGui.QFileDialog.getSaveFileName(self, 'Guardar', '/home')
+
+    def open_what(self):
+            self.file_name = QtGui.QFileDialog.getOpenFileName(self, 'Abrir', '/home')
+
 
 class sdr_rni_meter(gr.top_block):
-    def __init__(self):
+    def __init__(self, sc=8):
         gr.top_block.__init__(self)
 
         self.qapp = QtGui.QApplication(sys.argv)
@@ -336,11 +363,10 @@ class sdr_rni_meter(gr.top_block):
         self.port = port = 9999
         self.gan = gan = 10
         self.fi = fi = 70000000
-        self.sc = sc = 8
+        self.sc = sc
         self.t = t = 1
         self.ab = ab = 32000000
         self.N = N = 1024
-        self.m = m = (sc - fi) / ab
         self.IP = IP = "192.168.1.102"
         self.Antena = Antena = "RX2"
 	self.remote_IP = "192.168.1.101"
@@ -355,18 +381,18 @@ class sdr_rni_meter(gr.top_block):
         ##################################################
         self.qtgui_vector_sink_f_0 = qtgui.vector_sink_f(
             N * sc,
-            fi,
-            ab / N,
-            "Frecuencia",
-            "Amplitud",
+            fi / 1e6,
+            (ab / N) / 1e6,
+            "Frecuencia [MHz]",
+            "Potencia",
             "",
             1 # Number of inputs
         )
-        self.qtgui_vector_sink_f_0.set_update_time(0.10)
+        self.qtgui_vector_sink_f_0.set_update_time(0.1)
         self.qtgui_vector_sink_f_0.set_y_axis(y0, y1)
         self.qtgui_vector_sink_f_0.enable_autoscale(False)
         self.qtgui_vector_sink_f_0.enable_grid(True)
-        self.qtgui_vector_sink_f_0.set_x_axis_units("Hz")
+        self.qtgui_vector_sink_f_0.set_x_axis_units("MHz")
         self.qtgui_vector_sink_f_0.set_y_axis_units("dBm")
         self.qtgui_vector_sink_f_0.set_ref_level(0)
         
@@ -508,13 +534,18 @@ class sdr_rni_meter(gr.top_block):
         self.update_y_axis()
 
     def update_x_axis(self):
-        self.qtgui_vector_sink_f_0.set_x_axis(self.fi, self.fi + self.sc * self.ab)
+        self.qtgui_vector_sink_f_0.set_x_axis(self.fi / 1e6, self.ab / self.N / 1e6)
 
     def update_y_axis(self):
         self.qtgui_vector_sink_f_0.set_y_axis(self.y0, self.y1)
+        
 
 if __name__ == "__main__":
-    tb = sdr_rni_meter();
+    parser = argparse.ArgumentParser()
+    parser.add_argument('n', metavar='n', type=int, nargs='?', help='# de barridos', default=4)
+    args = parser.parse_args()
+
+    tb = sdr_rni_meter(args.n);
     tb.start()
     tb.qapp.exec_()
     tb.stop()

@@ -20,7 +20,7 @@ import time
 class SDR_SA_Server(gr.top_block):
 
     def __init__(self, gan=10, fi=70000000, ab=32000000, sc=10, t=1):
-        gr.top_block.__init__(self, "SDR Spectrum Analyzer Server")
+        gr.top_block.__init__(self, "SDR RNI Meter")
 
         ##################################################
         # Variables
@@ -56,7 +56,7 @@ class SDR_SA_Server(gr.top_block):
         self.blocks_vector_to_stream_0 = blocks.vector_to_stream(gr.sizeof_float*1, N)
         self.blocks_stream_to_vector_0 = blocks.stream_to_vector(gr.sizeof_gr_complex*1, N)
         self.blocks_complex_to_mag_0 = blocks.complex_to_mag(N)
-        self.RadioGIS_time_averager_0 = RadioGIS.time_averager(N, sc)
+        self.RadioGIS_time_averager_0 = RadioGIS.time_averager(N, t)
         self.udp_sink_0 = blocks.udp_sink(gr.sizeof_float*1, IP, port, 1472, True)
         self.RadioGIS_fft_0 = RadioGIS.fft(N, base, (ventana(N)))
 
@@ -166,15 +166,15 @@ if __name__ == '__main__':
     dino.bind()
     while 1:
         data = dino.listen()
+        print(data)
         if data.get("start"):
             tb = SDR_SA_Server(data.get("gan"), data.get("fi"), data.get("ab"), data.get("sc"), data.get("t"))
             tb.start()
-            start_time = time.time()
-            print(start_time)
             break
-    print(start_time + tb.get_t() * tb.get_sc())
-    while time.time() < start_time + tb.get_t() * tb.get_sc():
-        print(time.time())
+    start_time = time.time()
+    print(start_time)
+    tb.set_fi(tb.get_fi())
+    while 1:
     	data = dino.listen()
         if "gan" in data:
             tb.set_gan(data.get("gan"))
@@ -193,7 +193,7 @@ if __name__ == '__main__':
         elif "ventana" in data:
             tb.set_ventana(data.get("ventana"))
         elif data.get("stop"):
-            break
+            break       
     tb.stop()
     tb.wait()
     stop_time = time.time() - start_time
