@@ -37,6 +37,7 @@ class SDR_SA_Server(gr.top_block):
         self.Antena = Antena = "RX2"
         self.ventana = ventana = window.blackmanharris
         self.base = base = "exponencial"
+        self.gps = gps = "n: 0.0 deg 0.0 deg 0.0m lat/lon/al"
 
         ##################################################
         # Blocks
@@ -71,6 +72,10 @@ class SDR_SA_Server(gr.top_block):
         self.connect((self.dbm, 0), (self.udp_sink_0, 0))
         self.connect((self.src, 0), (self.blocks_stream_to_vector_0, 0))
 
+    def get_gps(self):
+        gps_position = self.src.get_mboard_sensor("gps_position").to_pp_string()[11:-1]
+        self.gps = str(gps_position)
+        return self.gps
 
     def get_port(self):
         return self.port
@@ -165,7 +170,7 @@ if __name__ == '__main__':
     dino = remote_configurator("192.168.1.101", 9999)
     dino.bind()
     while 1:
-        data = dino.listen()
+        data = dino.listen({"gps":tb.get_gps()})
         print(data)
         if data.get("start"):
             tb = SDR_SA_Server(data.get("gan"), data.get("fi"), data.get("ab"), data.get("sc"), data.get("t"))
@@ -175,7 +180,7 @@ if __name__ == '__main__':
     print(start_time)
     tb.set_fi(tb.get_fi())
     while 1:
-    	data = dino.listen()
+    	data = dino.listen({"gps":tb.get_gps()})
         if "gan" in data:
             tb.set_gan(data.get("gan"))
         elif "fi" in data:

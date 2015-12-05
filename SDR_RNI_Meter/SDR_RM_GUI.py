@@ -48,7 +48,7 @@ except ImportError:
     sys.exit(1)
 
 class dialog_box(QtGui.QWidget):
-    def __init__(self, header, display, control):
+    def __init__(self, header, display, display2, control):
         QtGui.QWidget.__init__(self, None)
         self.setWindowTitle('SDR RNI Meter')
 	self.showMaximized()
@@ -75,9 +75,27 @@ class dialog_box(QtGui.QWidget):
         self.boxlayout = QtGui.QHBoxLayout()
         self.boxlayout.addWidget(control, 1)
         self.boxlayout.addWidget(display)
+        
+        self.boxgps = QtGui.QWidget(self)                      
+        self.boxgpslayout = QtGui.QHBoxLayout()                
+        self.gpslabel = QtGui.QLabel()                         
+        self.gpslabel.setText('Posicion recibida con el GPS')   	
+        self.boxgpslayout.addWidget(self.gpslabel)	
+        
+        self.main = display2						
+        self.gpsfield = QtGui.QLineEdit() 			
+        self.gpsfield.setEnabled(False)				
+        self.gpsfield.setText(self.main.gps)		
+        self.boxgpslayout.addWidget(self.gpsfield)	
+        self.boxgps.setLayout(self.boxgpslayout)
+        
+        self.refresh = QtGui.QPushButton("Refresh") 
+        self.connect(self.refresh, QtCore.SIGNAL('clicked()'), self.update_GPS) 
+        self.boxgpslayout.addWidget(self.refresh) 
 
         self.body.setLayout(self.boxlayout)
         self.vertlayout.addWidget(self.body)
+        self.vertlayout.addWidget(self.boxgps)
 
 
 
@@ -375,6 +393,7 @@ class sdr_rni_meter(gr.top_block):
         self.base = "exponencial"
         self.y0 = y0 = -100
         self.y1 = y1 = 0
+        self.gps = gps = "n: 0.0 deg 0.0 deg 0.0m lat/lon/al"
 
         ##################################################
         # Blocks
@@ -429,7 +448,7 @@ class sdr_rni_meter(gr.top_block):
         self.head_win = header()
         self.ctrl_win.attach_signal(self)
 
-        self.main_box = dialog_box(self.head_win, display_box(self._qtgui_vector_sink_f_0_win), self.ctrl_win)
+        self.main_box = dialog_box(self.head_win, display_box(self._qtgui_vector_sink_f_0_win), self, self.ctrl_win)
         self.main_box.show()
 
     def closeEvent(self, event):
@@ -532,6 +551,15 @@ class sdr_rni_meter(gr.top_block):
     def set_y1(self, y1):
         self.y1 = y1
         self.update_y_axis()
+        
+    def get_gps(self):
+		pos = self.dino.send({"fc": self.fc})
+		if "gps" in pos:
+			self.set_gps(pos.get("gps"))				
+		return self.gps				
+
+    def set_gps(self, gps):			
+        self.gps = gps				
 
     def update_x_axis(self):
         self.qtgui_vector_sink_f_0.set_x_axis(self.fi / 1e6, self.ab / self.N / 1e6)
