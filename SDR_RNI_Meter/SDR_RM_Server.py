@@ -19,7 +19,7 @@ import time
 
 class SDR_SA_Server(gr.top_block):
 
-    def __init__(self, gan=10, fi=70000000, ab=32000000, sc=10, t=1):
+    def __init__(self, gan=10, fi=70000000, ab=32000000, sc=10, t=1, base="exponencial"):
         gr.top_block.__init__(self, "SDR RNI Meter")
 
         ##################################################
@@ -36,7 +36,7 @@ class SDR_SA_Server(gr.top_block):
         self.IP = IP = "192.168.1.102"
         self.Antena = Antena = "RX2"
         self.ventana = ventana = window.blackmanharris
-        self.base = base = "exponencial"
+        self.base = base
         self.gps = gps = "n: 0.0 deg 0.0 deg 0.0m lat/lon/al"
 
         ##################################################
@@ -72,10 +72,6 @@ class SDR_SA_Server(gr.top_block):
         self.connect((self.dbm, 0), (self.udp_sink_0, 0))
         self.connect((self.src, 0), (self.blocks_stream_to_vector_0, 0))
 
-    def get_gps(self):
-        gps_position = self.src.get_mboard_sensor("gps_position").to_pp_string()[11:-1]
-        self.gps = str(gps_position)
-        return self.gps
 
     def get_port(self):
         return self.port
@@ -109,7 +105,7 @@ class SDR_SA_Server(gr.top_block):
         return self.fc
 
     def set_fc(self):
-        self.fc = [self.fi + x * self.ab for x in range(self.sc)]
+        self.fc = [self.fi + x * self.ab for x in range(self.sc + 1)]
         for freq in self.fc:
             time.sleep(self.t)
             self.src.set_center_freq(freq, 0)
@@ -160,46 +156,30 @@ class SDR_SA_Server(gr.top_block):
         return self.base
 
     def set_base(self, base):
-        self.base = base.split()[0].lower()
+        self.base = base
         self.RadioGIS_fft_0.set_W(self.base)
+
+    def get_gps(self):
+        gps_position = self.src.get_mboard_sensor("gps_position").to_pp_string()[11:-1]
+        self.gps = str(gps_position)
+        return self.gps
 
 
 if __name__ == '__main__':
     parser = OptionParser(option_class=eng_option, usage="%prog: [options]")
     (options, args) = parser.parse_args()
-    dino = remote_configurator("192.168.1.101", 9999)
+    dino = remote_configurator("192.168.1.100", 9999)
     dino.bind()
     while 1:
-        data = dino.listen({"gps":tb.get_gps()})
-        print(data)
+        data = dino.listen({"Ok_message": True})
         if data.get("start"):
-            tb = SDR_SA_Server(data.get("gan"), data.get("fi"), data.get("ab"), data.get("sc"), data.get("t"))
+            tb = SDR_SA_Server(data.get("gan"), data.get("fi"), data.get("ab"), data.get("sc"), data.get("t"), data.get("base"))
             tb.start()
             break
     start_time = time.time()
-    print(start_time)
-    tb.set_fi(tb.get_fi())
-    while 1:
-    	data = dino.listen({"gps":tb.get_gps()})
-        if "gan" in data:
-            tb.set_gan(data.get("gan"))
-        elif "fi" in data:
-            tb.set_fi(data.get("fi"))
-        elif "sc" in data:
-            tb.set_sc(data.get("sc"))
-        elif "ab" in data:
-            tb.set_ab(data.get("ab"))
-        elif "IP" in data:
-            tb.set_IP(data.get("IP"))
-        elif "base" in data:
-            tb.set_base(data.get("base"))
-        elif "t" in data:
-            tb.set_t(data.get("t"))
-        elif "ventana" in data:
-            tb.set_ventana(data.get("ventana"))
-        elif data.get("stop"):
-            break       
+    print("Started at {0:s}\n\n".format(str(start_time)))
+    tb.set_fi(tb.get_fi() - tb.get_ab() / 2)
     tb.stop()
     tb.wait()
     stop_time = time.time() - start_time
-    print(stop_time)
+    print("\nElapsed time: {0:s} seconds".format(str(stop_time)))

@@ -48,7 +48,7 @@ except ImportError:
     sys.exit(1)
 
 class dialog_box(QtGui.QWidget):
-    def __init__(self, header, display, display2, control):
+    def __init__(self, header, display, control):
         QtGui.QWidget.__init__(self, None)
         self.setWindowTitle('SDR RNI Meter')
 	self.showMaximized()
@@ -75,27 +75,9 @@ class dialog_box(QtGui.QWidget):
         self.boxlayout = QtGui.QHBoxLayout()
         self.boxlayout.addWidget(control, 1)
         self.boxlayout.addWidget(display)
-        
-        self.boxgps = QtGui.QWidget(self)                      
-        self.boxgpslayout = QtGui.QHBoxLayout()                
-        self.gpslabel = QtGui.QLabel()                         
-        self.gpslabel.setText('Posicion recibida con el GPS')   	
-        self.boxgpslayout.addWidget(self.gpslabel)	
-        
-        self.main = display2						
-        self.gpsfield = QtGui.QLineEdit() 			
-        self.gpsfield.setEnabled(False)				
-        self.gpsfield.setText(self.main.gps)		
-        self.boxgpslayout.addWidget(self.gpsfield)	
-        self.boxgps.setLayout(self.boxgpslayout)
-        
-        self.refresh = QtGui.QPushButton("Refresh") 
-        self.connect(self.refresh, QtCore.SIGNAL('clicked()'), self.update_GPS) 
-        self.boxgpslayout.addWidget(self.refresh) 
 
         self.body.setLayout(self.boxlayout)
         self.vertlayout.addWidget(self.body)
-        self.vertlayout.addWidget(self.boxgps)
 
 
 
@@ -179,6 +161,7 @@ class control_box(QtGui.QWidget):
         self.conf_an.addRow("Ancho de Banda:", self.sel_ab)
         self.connect(self.sel_ab, QtCore.SIGNAL("editingFinished()"),
                      self.ab_edit_text)
+        self.sel_ab.currentIndexChanged.connect(self.ab_edit_text)
 
         self.sel_ganancia = QtGui.QLineEdit(self)
         self.sel_ganancia.setMinimumWidth(100)
@@ -265,7 +248,7 @@ class control_box(QtGui.QWidget):
 
     def send_start_signal(self):
         try:
-            conf_ini = {"gan": self.signal.get_gan(), "fi": self.signal.get_fi(), "ab": self.signal.get_ab(), "sc": self.signal.get_sc(), "t": self.signal.get_t(), "start": True}
+            conf_ini = {"gan": self.signal.get_gan(), "fi": self.signal.get_fi(), "ab": self.signal.get_ab(), "sc": self.signal.get_sc(), "t": self.signal.get_t(), "base": self.signal.get_base(), "start": True}
             self.signal.get_dino().send(conf_ini)
             print("Application successfully started")
         except:
@@ -359,10 +342,11 @@ class control_box(QtGui.QWidget):
 	    print("Invalid center frequency")
 
     def save_what(self):
-            self.file_name = QtGui.QFileDialog.getSaveFileName(self, 'Guardar', '/home')
+            self.filename = QtGui.QFileDialog.getSaveFileName(self, 'Guardar', '/home')
+            self.signal.set_filename(self.filename)
 
     def open_what(self):
-            self.file_name = QtGui.QFileDialog.getOpenFileName(self, 'Abrir', '/home')
+            self.filename = QtGui.QFileDialog.getOpenFileName(self, 'Abrir', '/home')
 
 
 class sdr_rni_meter(gr.top_block):
@@ -393,7 +377,7 @@ class sdr_rni_meter(gr.top_block):
         self.base = "exponencial"
         self.y0 = y0 = -100
         self.y1 = y1 = 0
-        self.gps = gps = "n: 0.0 deg 0.0 deg 0.0m lat/lon/al"
+        self.File = "datos.txt"
 
         ##################################################
         # Blocks
@@ -436,6 +420,7 @@ class sdr_rni_meter(gr.top_block):
         self.blocks_stream_to_vector_0 = blocks.stream_to_vector(gr.sizeof_float*1, N)
         self.udp_source_0 = blocks.udp_source(gr.sizeof_float*1, IP, port, 1472, True)
         self.RadioGIS_dynamic_sink_0 = RadioGIS.dynamic_sink(N, sc)
+        self.non_zero_file_sink_0 = RadioGIS.non_zero_file_sink(N, File)
 
         ##################################################
         # Connections
@@ -443,12 +428,13 @@ class sdr_rni_meter(gr.top_block):
         self.connect((self.RadioGIS_dynamic_sink_0, 0), (self.qtgui_vector_sink_f_0, 0))
         self.connect((self.udp_source_0, 0), (self.blocks_stream_to_vector_0, 0))
         self.connect((self.blocks_stream_to_vector_0, 0), (self.RadioGIS_dynamic_sink_0, 0))
+        self.connect((self.blocks_stream_to_vector_0, 0), (self.non_zero_file_sink_0, 0))
 
         self.ctrl_win = control_box()
         self.head_win = header()
         self.ctrl_win.attach_signal(self)
 
-        self.main_box = dialog_box(self.head_win, display_box(self._qtgui_vector_sink_f_0_win), self, self.ctrl_win)
+        self.main_box = dialog_box(self.head_win, display_box(self._qtgui_vector_sink_f_0_win), self.ctrl_win)
         self.main_box.show()
 
     def closeEvent(self, event):
@@ -551,15 +537,10 @@ class sdr_rni_meter(gr.top_block):
     def set_y1(self, y1):
         self.y1 = y1
         self.update_y_axis()
-        
-    def get_gps(self):
-		pos = self.dino.send({"fc": self.fc})
-		if "gps" in pos:
-			self.set_gps(pos.get("gps"))				
-		return self.gps				
 
-    def set_gps(self, gps):			
-        self.gps = gps				
+    def set_filename(self, File):
+        self.File = File
+        self.non_zero_file_sink_0.set_File(File)
 
     def update_x_axis(self):
         self.qtgui_vector_sink_f_0.set_x_axis(self.fi / 1e6, self.ab / self.N / 1e6)
