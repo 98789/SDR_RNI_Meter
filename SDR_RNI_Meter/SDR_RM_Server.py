@@ -19,7 +19,7 @@ import time
 
 class SDR_SA_Server(gr.top_block):
 
-    def __init__(self, gan=10, fi=70000000, ab=32000000, sc=10, t=1, base="exponencial"):
+    def __init__(self, gan=10, fi=70000000, ab=32000000, sc=10, t=1, base="exponencial", escala ="dBm"):
         gr.top_block.__init__(self, "SDR RNI Meter")
 
         ##################################################
@@ -33,10 +33,11 @@ class SDR_SA_Server(gr.top_block):
         self.N = N = 1024
         self.sc = sc
         self.t = t
-        self.IP = IP = "192.168.1.102"
+        self.IP = IP = "192.168.1.108"
         self.Antena = Antena = "RX2"
         self.ventana = ventana = window.blackmanharris
         self.base = base
+        self.escala = escala
         self.gps = gps = "n: 0.0 deg 0.0 deg 0.0m lat/lon/al"
 
         ##################################################
@@ -54,6 +55,7 @@ class SDR_SA_Server(gr.top_block):
         self.src.set_gain(gan, 0)
         self.src.set_antenna("RX2", 0)
         self.dbm = RadioGIS.dbm()
+        self.dbm.set_enabled(escala == 'dBm')
         self.blocks_vector_to_stream_0 = blocks.vector_to_stream(gr.sizeof_float*1, N)
         self.blocks_stream_to_vector_0 = blocks.stream_to_vector(gr.sizeof_gr_complex*1, N)
         self.blocks_complex_to_mag_0 = blocks.complex_to_mag(N)
@@ -105,10 +107,10 @@ class SDR_SA_Server(gr.top_block):
         return self.fc
 
     def set_fc(self):
-        self.fc = [self.fi + x * self.ab for x in range(self.sc + 1)]
+        self.fc = [self.fi + x * self.ab for x in range(self.sc)]
         for freq in self.fc:
-            time.sleep(self.t)
             self.src.set_center_freq(freq, 0)
+            time.sleep(self.t)
 
     def get_t(self):
         return self.t
@@ -159,6 +161,13 @@ class SDR_SA_Server(gr.top_block):
         self.base = base
         self.RadioGIS_fft_0.set_W(self.base)
 
+    def get_escala(self):
+        return self.escala
+
+    def set_escala(self, escala):
+        self.escala = escala
+        self.dbm.set_enabled(self.escala == 'dbm')
+
     def get_gps(self):
         gps_position = self.src.get_mboard_sensor("gps_position").to_pp_string()[11:-1]
         self.gps = str(gps_position)
@@ -168,17 +177,17 @@ class SDR_SA_Server(gr.top_block):
 if __name__ == '__main__':
     parser = OptionParser(option_class=eng_option, usage="%prog: [options]")
     (options, args) = parser.parse_args()
-    dino = remote_configurator("192.168.1.100", 9999)
+    dino = remote_configurator("192.168.1.101", 9999)
     dino.bind()
     while 1:
-        data = dino.listen({"Ok_message": True})
+        data = dino.listen()
         if data.get("start"):
-            tb = SDR_SA_Server(data.get("gan"), data.get("fi"), data.get("ab"), data.get("sc"), data.get("t"), data.get("base"))
+            tb = SDR_SA_Server(data.get("gan"), data.get("fi"), data.get("ab"), data.get("sc"), data.get("t"), data.get("base"), data.get("escala"))
             tb.start()
             break
     start_time = time.time()
     print("Started at {0:s}\n\n".format(str(start_time)))
-    tb.set_fi(tb.get_fi() - tb.get_ab() / 2)
+    tb.set_fi(tb.get_fi() + tb.get_ab() / 2)
     tb.stop()
     tb.wait()
     stop_time = time.time() - start_time

@@ -80,8 +80,6 @@ class dialog_box(QtGui.QWidget):
         self.vertlayout.addWidget(self.body)
 
 
-
-
 class header(QtGui.QWidget):
     def __init__(self, parent=None):
         QtGui.QWidget.__init__(self, parent)
@@ -203,6 +201,9 @@ class control_box(QtGui.QWidget):
         self.sel_escala.addItems(escalas)
         self.sel_escala.setMinimumWidth(100)
         self.conf_an.addRow("Escala:", self.sel_escala)
+        self.connect(self.sel_escala, QtCore.SIGNAL("currentTextChanged(const QString & text)"),
+                     self.escala_edit_text)
+        self.sel_escala.currentIndexChanged.connect(self.escala_edit_text)
 
         self.sel_IP = QtGui.QLineEdit(self)
         self.sel_IP.setMinimumWidth(100)
@@ -248,7 +249,7 @@ class control_box(QtGui.QWidget):
 
     def send_start_signal(self):
         try:
-            conf_ini = {"gan": self.signal.get_gan(), "fi": self.signal.get_fi(), "ab": self.signal.get_ab(), "sc": self.signal.get_sc(), "t": self.signal.get_t(), "base": self.signal.get_base(), "start": True}
+            conf_ini = {"gan": self.signal.get_gan(), "fi": self.signal.get_fi(), "ab": self.signal.get_ab(), "sc": self.signal.get_sc(), "t": self.signal.get_t(), "base": self.signal.get_base().split()[0].lower(), "escala": self.signal.get_escala(), "start": True}
             self.signal.get_dino().send(conf_ini)
             print("Application successfully started")
         except:
@@ -327,6 +328,13 @@ class control_box(QtGui.QWidget):
         except ValueError:
 	    print("Something went wrong with the selected base")
 
+    def escala_edit_text(self):
+        try:
+	    newEscala = str(self.sel_escala.currentText())
+            self.signal.set_escala(newEscala)
+        except ValueError:
+	    print("Something went wrong with the selected base")
+
     def y0_edit_text(self):
         try:
 	    newy0 = float(self.sel_y0.text())
@@ -363,21 +371,22 @@ class sdr_rni_meter(gr.top_block):
         # Variables
         ##################################################
         self.port = port = 9999
-        self.gan = gan = 10
+        self.gan = gan = 1
         self.fi = fi = 70000000
         self.sc = sc
         self.t = t = 1
         self.ab = ab = 32000000
         self.N = N = 1024
-        self.IP = IP = "192.168.1.102"
+        self.IP = IP = "192.168.1.108"
         self.Antena = Antena = "RX2"
 	self.remote_IP = "192.168.1.101"
         self.dino = remote_configurator(self.remote_IP, self.port)
         self.ventana = "Hamming"
         self.base = "exponencial"
+        self.escala = 'dBm'
         self.y0 = y0 = -100
         self.y1 = y1 = 0
-        self.File = "datos.txt"
+        self.File = File = "datos.txt"
 
         ##################################################
         # Blocks
@@ -385,7 +394,7 @@ class sdr_rni_meter(gr.top_block):
         self.qtgui_vector_sink_f_0 = qtgui.vector_sink_f(
             N * sc,
             fi / 1e6,
-            (ab / N) / 1e6,
+            (sc * ab / N) / 1e6,
             "Frecuencia [MHz]",
             "Potencia",
             "",
@@ -420,7 +429,7 @@ class sdr_rni_meter(gr.top_block):
         self.blocks_stream_to_vector_0 = blocks.stream_to_vector(gr.sizeof_float*1, N)
         self.udp_source_0 = blocks.udp_source(gr.sizeof_float*1, IP, port, 1472, True)
         self.RadioGIS_dynamic_sink_0 = RadioGIS.dynamic_sink(N, sc)
-        self.non_zero_file_sink_0 = RadioGIS.non_zero_file_sink(N, File)
+        self.non_zero_file_sink_0 = RadioGIS.non_zero_file_sink(N, sc, File)
 
         ##################################################
         # Connections
@@ -456,7 +465,6 @@ class sdr_rni_meter(gr.top_block):
 
     def set_gan(self, gan):
         self.gan = gan
-	self.dino.send({"gan": self.gan})
 
     def get_fi(self):
         return self.fi
@@ -465,7 +473,6 @@ class sdr_rni_meter(gr.top_block):
         if(34000000 < fi < 6016000000 - self.ab / 2):
             self.fi = fi
             self.update_x_axis()
-            self.dino.send({"fi": self.fi})
 
     def get_ab(self):
         return self.ab
@@ -473,7 +480,6 @@ class sdr_rni_meter(gr.top_block):
     def set_ab(self, ab):
         self.ab = ab
         self.update_x_axis()
-	self.dino.send({"ab": self.ab})
 
     def get_N(self):
         return self.N
@@ -487,7 +493,6 @@ class sdr_rni_meter(gr.top_block):
     def set_sc(self, sc):
         self.sc = sc
         self.update_x_axis()
-        self.dino.send({"sc": self.sc})
         self.RadioGIS_dynamic_sink_0.set_n(self.sc)
 
     def get_t(self):
@@ -495,14 +500,12 @@ class sdr_rni_meter(gr.top_block):
 
     def set_t(self, t):
         self.t = t
-        self.dino.send({"t": self.t})
 
     def get_IP(self):
         return self.IP
 
     def set_IP(self, IP):
         self.IP = IP
-	self.dino.send({"IP": self.IP})
 
     def get_Antena(self):
         return self.Antena
@@ -515,14 +518,18 @@ class sdr_rni_meter(gr.top_block):
 
     def set_ventana(self, ventana):
         self.ventana = ventana
-	self.dino.send({"ventana": self.ventana})
 
     def get_base(self):
         return self.base
 
     def set_base(self, base):
         self.base = base
-	self.dino.send({"base": self.base})
+
+    def get_escala(self):
+        return self.escala
+
+    def set_escala(self, escala):
+        self.escala = escala
 
     def get_y0(self):
         return self.y0
@@ -543,7 +550,7 @@ class sdr_rni_meter(gr.top_block):
         self.non_zero_file_sink_0.set_File(File)
 
     def update_x_axis(self):
-        self.qtgui_vector_sink_f_0.set_x_axis(self.fi / 1e6, self.ab / self.N / 1e6)
+        self.qtgui_vector_sink_f_0.set_x_axis(self.fi / 1e6, self.sc * self.ab / self.N / 1e6)
 
     def update_y_axis(self):
         self.qtgui_vector_sink_f_0.set_y_axis(self.y0, self.y1)
@@ -551,7 +558,7 @@ class sdr_rni_meter(gr.top_block):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('n', metavar='n', type=int, nargs='?', help='# de barridos', default=4)
+    parser.add_argument('n', metavar='n', type=int, nargs='?', help='# de barridos', default=8)
     args = parser.parse_args()
 
     tb = sdr_rni_meter(args.n);
